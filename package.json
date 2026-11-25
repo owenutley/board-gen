@@ -1,0 +1,22 @@
+{
+  "name": "game-board-level-painter",
+  "version": "1.1.0",
+  "description": "2D Game Board Chunk & Matrix Level Painter Desktop App",
+  "main": "main.js",
+  "scripts": {
+    "start": "node run.js",
+    "dist": "electron-builder"
+  },
+  "keywords": [
+    "game-dev",
+    "level-editor",
+    "matrix-painter",
+    "tilemap"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@fortawesome/fontawesome-free": "^6.7.2",
+    "electron": "^33.4.11"
+  }
+}

@@ -1,0 +1,2083 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D Game Board Stage Builder & Matrix Painter</title>
+    <!-- Offline Bundled Tailwind CSS -->
+    <script src="vendor/tailwind.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            850: '#131c2e',
+                            950: '#090d16',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Offline Bundled FontAwesome Icons -->
+    <link rel="stylesheet" href="vendor/fontawesome/all.min.css">
+
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        code, pre, textarea, .font-mono {
+            font-family: "JetBrains Mono", "Cascadia Code", "Consolas", monospace;
+        }
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #090d16;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+        .tool-btn.active {
+            background-color: #4f46e5 !important;
+            color: #ffffff !important;
+            box-shadow: 0 0 14px rgba(79, 70, 229, 0.45);
+        }
+        .fmt-tab.active {
+            background-color: #334155 !important;
+            color: #ffffff !important;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col overflow-hidden select-none">
+
+    <!-- Top Navigation Header -->
+    <header class="border-b border-slate-800 bg-slate-900/95 backdrop-blur sticky top-0 z-30 px-4 py-2 flex items-center justify-between shadow-lg flex-shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-600 to-emerald-500 flex items-center justify-center text-white font-bold text-lg shadow-md shadow-indigo-500/25">
+                <i class="fa-solid fa-shapes text-sm"></i>
+            </div>
+            <div>
+                <h1 class="text-sm sm:text-base font-bold text-slate-100 flex items-center gap-2">
+                    Board Stage Builder
+                    <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono font-medium">Auto-Crop Mode</span>
+                    <span id="savedIndicator" class="text-[10px] text-emerald-400 flex items-center gap-1 font-mono transition-opacity duration-300">
+                        <i class="fa-solid fa-circle-check text-[9px]"></i> Saved
+                    </span>
+                </h1>
+                <p class="text-[11px] text-slate-400 hidden sm:block">Unified board units • Auto-crops minimum viable board on export</p>
+            </div>
+        </div>
+
+        <!-- Header Action Controls & Metrics -->
+        <div class="flex items-center gap-2 sm:gap-3">
+            <div class="flex items-center gap-3 px-3 py-1.5 rounded-lg bg-slate-850 border border-slate-800 text-xs text-slate-300 font-mono">
+                <div><span class="text-slate-500">Board:</span> <span id="headerBoardSize" class="text-emerald-400 font-bold">8x8</span></div>
+                <div class="w-px h-3 bg-slate-800"></div>
+                <div><span class="text-slate-500">Canvas:</span> <span id="headerCanvasSize" class="text-slate-400">50x50</span></div>
+                <div class="w-px h-3 bg-slate-800"></div>
+                <div><span class="text-slate-500">Tiles:</span> <span id="headerPlayableTiles" class="text-indigo-400 font-bold">64</span></div>
+            </div>
+
+            <button id="btnFocusBoardTop" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-700/60 text-indigo-300 flex items-center gap-1.5 transition-colors" title="Zoom & Center Board (F)">
+                <i class="fa-solid fa-crosshairs text-indigo-400"></i>
+                <span class="hidden md:inline">Focus Board</span>
+            </button>
+
+            <button id="btnOpenImport" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-1.5 transition-colors" title="Import Matrix">
+                <i class="fa-solid fa-file-import text-indigo-400"></i>
+                <span class="hidden sm:inline">Import</span>
+            </button>
+
+            <button id="btnQuickExportPng" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 flex items-center gap-1.5 transition-colors" title="Export High-Res PNG">
+                <i class="fa-solid fa-image"></i>
+                <span class="hidden sm:inline">PNG</span>
+            </button>
+
+            <button id="btnQuickCopyTop" class="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 flex items-center gap-1.5 transition-all active:scale-95">
+                <i class="fa-solid fa-copy"></i>
+                <span>Copy Board</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
+
+        <!-- Left Sidebar: Tools, Stage Actions & Palette -->
+        <aside class="w-full lg:w-80 border-b lg:border-b-0 lg:border-r border-slate-800 bg-slate-900/90 p-3.5 flex flex-col gap-3.5 overflow-y-auto max-h-[48vh] lg:max-h-none flex-shrink-0 z-20">
+            
+            <!-- Tools & Batch Controls -->
+            <section class="bg-slate-850 p-2.5 rounded-xl border border-slate-800 shadow-sm">
+                <div class="flex items-center justify-between mb-2">
+                    <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                        <i class="fa-solid fa-paintbrush text-indigo-400"></i> Tools
+                    </h2>
+                    <div class="flex gap-1">
+                        <button id="btnUndo" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 text-xs" title="Undo (Ctrl+Z)">
+                            <i class="fa-solid fa-rotate-left"></i>
+                        </button>
+                        <button id="btnRedo" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 text-xs" title="Redo (Ctrl+Y)">
+                            <i class="fa-solid fa-rotate-right"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-5 gap-1 mb-2">
+                    <button id="toolBrush" data-tool="brush" class="tool-btn active p-2 rounded-lg bg-indigo-600 text-white text-xs flex flex-col items-center gap-1 transition-all" title="Brush Tool (B)">
+                        <i class="fa-solid fa-pen text-sm"></i>
+                        <span class="text-[9px]">Brush</span>
+                    </button>
+                    <button id="toolEraser" data-tool="eraser" class="tool-btn p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex flex-col items-center gap-1 transition-all" title="Eraser Tool (E) - Deletes tile completely">
+                        <i class="fa-solid fa-eraser text-sm"></i>
+                        <span class="text-[9px]">Erase</span>
+                    </button>
+                    <button id="toolBucket" data-tool="bucket" class="tool-btn p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex flex-col items-center gap-1 transition-all" title="Fill Bucket">
+                        <i class="fa-solid fa-fill-drip text-sm"></i>
+                        <span class="text-[9px]">Fill</span>
+                    </button>
+                    <button id="toolPicker" data-tool="picker" class="tool-btn p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex flex-col items-center gap-1 transition-all" title="Eyedropper (I)">
+                        <i class="fa-solid fa-eye-dropper text-sm"></i>
+                        <span class="text-[9px]">Pick</span>
+                    </button>
+                    <button id="toolHand" data-tool="hand" class="tool-btn p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex flex-col items-center gap-1 transition-all" title="Hand / Pan Tool (H or hold Space)">
+                        <i class="fa-solid fa-hand text-sm"></i>
+                        <span class="text-[9px]">Pan [H]</span>
+                    </button>
+                </div>
+
+                <!-- Eraser Target Mode Toggle -->
+                <div class="flex items-center justify-between text-[11px] text-slate-400 bg-slate-900 px-2 py-1.5 rounded-lg border border-slate-800 mb-2">
+                    <span>Erase / Delete to:</span>
+                    <div class="flex items-center gap-2">
+                        <label class="flex items-center gap-1 cursor-pointer text-slate-300">
+                            <input type="radio" name="eraseTarget" value="-1" checked class="text-indigo-600 focus:ring-0"> Void (_)
+                        </label>
+                        <label class="flex items-center gap-1 cursor-pointer text-slate-300">
+                            <input type="radio" name="eraseTarget" value="0" class="text-indigo-600 focus:ring-0"> Floor (.)
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Quick Board Actions -->
+                <div class="grid grid-cols-2 gap-1.5">
+                    <button id="btnFocusBoard" class="py-1 px-2 bg-indigo-950/70 hover:bg-indigo-900 text-indigo-300 border border-indigo-800/80 rounded-lg text-[11px] flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-crosshairs text-indigo-400"></i> Center on Board
+                    </button>
+                    <button id="btnRecenterBoard" class="py-1 px-2 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 rounded-lg text-[11px] flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-arrows-to-dot text-amber-400"></i> Recenter Canvas
+                    </button>
+                    <button id="btnWrapWall" class="py-1 px-2 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 rounded-lg text-[11px] flex items-center justify-center gap-1.5">
+                        <i class="fa-regular fa-square text-amber-500"></i> Surround Wall
+                    </button>
+                    <button id="btnClearBoard" class="py-1 px-2 bg-slate-900 hover:bg-rose-950/40 text-rose-300 border border-slate-800 rounded-lg text-[11px] flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-trash-can text-rose-400"></i> Clear Board
+                    </button>
+                </div>
+            </section>
+
+            <!-- Board Stage & Auto-Crop Settings -->
+            <section class="bg-slate-850 p-2.5 rounded-xl border border-slate-800 shadow-sm">
+                <div class="flex items-center justify-between mb-1.5">
+                    <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                        <i class="fa-solid fa-crop-simple text-emerald-400"></i> Minimum Viable Board
+                    </h2>
+                    <span class="text-[11px] font-mono text-emerald-400 font-bold" id="bboxDimLabel">8 x 8</span>
+                </div>
+                <div class="flex items-center justify-between text-xs bg-slate-900 p-2 rounded-lg border border-slate-800 mb-2">
+                    <span class="text-slate-400 text-[11px]">Export Crop Padding:</span>
+                    <select id="selectCropPadding" class="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded px-2 py-0.5">
+                        <option value="0">0 (Tightest Crop)</option>
+                        <option value="1" selected>1 Tile Void Border</option>
+                        <option value="2">2 Tiles Border</option>
+                        <option value="none">No Crop (Full Canvas)</option>
+                    </select>
+                </div>
+
+                <!-- Transforms & Nudge -->
+                <div class="grid grid-cols-4 gap-1">
+                    <button id="btnRotateCW" class="py-1 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded text-slate-300 text-xs flex items-center justify-center gap-1" title="Rotate 90° Clockwise">
+                        <i class="fa-solid fa-rotate-right"></i> 90°
+                    </button>
+                    <button id="btnRotateCCW" class="py-1 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded text-slate-300 text-xs flex items-center justify-center gap-1" title="Rotate 90° Counter-Clockwise">
+                        <i class="fa-solid fa-rotate-left"></i> -90°
+                    </button>
+                    <button id="btnFlipH" class="py-1 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded text-slate-300 text-xs flex items-center justify-center gap-1" title="Flip Horizontally">
+                        <i class="fa-solid fa-arrows-left-right"></i> Flip H
+                    </button>
+                    <button id="btnFlipV" class="py-1 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded text-slate-300 text-xs flex items-center justify-center gap-1" title="Flip Vertically">
+                        <i class="fa-solid fa-arrows-up-down"></i> Flip V
+                    </button>
+                </div>
+            </section>
+
+            <!-- Unified Units Palette -->
+            <section class="bg-slate-850 p-2.5 rounded-xl border border-slate-800 shadow-sm flex-1 flex flex-col">
+                <div class="flex items-center justify-between mb-2">
+                    <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                        <i class="fa-solid fa-palette text-indigo-400"></i> Board Units
+                    </h2>
+                    <span class="text-[10px] text-slate-500">Keys [1-9]</span>
+                </div>
+
+                <!-- Units List -->
+                <div id="paletteContainer" class="space-y-1.5 mb-2 max-h-56 lg:max-h-64 overflow-y-auto pr-1">
+                    <!-- Dynamic Palette Items Injected Here -->
+                </div>
+
+                <!-- Custom Unit Form Trigger -->
+                <button id="btnToggleAddUnit" class="w-full py-1.5 bg-slate-900 hover:bg-slate-800 border border-dashed border-slate-700 text-indigo-400 hover:text-indigo-300 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors">
+                    <i class="fa-solid fa-plus"></i> Add Custom Unit
+                </button>
+
+                <!-- New Unit Inline Form -->
+                <div id="newUnitForm" class="hidden mt-2 p-2 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+                    <div class="text-[11px] font-bold text-slate-300">New Unit</div>
+                    <div class="grid grid-cols-2 gap-1.5">
+                        <input type="text" id="newUnitName" placeholder="Unit Name" class="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200">
+                        <input type="number" id="newUnitId" placeholder="ID (e.g. 5)" class="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200">
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="text" id="newUnitChar" placeholder="Symbol (e.g. K)" maxlength="2" class="w-16 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs font-mono text-center text-slate-200">
+                        <input type="color" id="newUnitColor" value="#ec4899" class="w-8 h-7 bg-transparent border-0 cursor-pointer">
+                        <button id="btnSaveNewUnit" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold py-1 rounded">Save Unit</button>
+                        <button id="btnCancelNewUnit" class="px-2 bg-slate-800 text-slate-400 text-xs py-1 rounded">Cancel</button>
+                    </div>
+                </div>
+            </section>
+
+        </aside>
+
+        <!-- Center Interactive Viewport (Hardware-Accelerated 2D Camera Canvas) -->
+        <section class="flex-1 bg-slate-950 flex flex-col relative overflow-hidden min-h-[460px]">
+            
+            <!-- Floating Viewport Controls Overlay -->
+            <div class="absolute top-3 left-3 right-3 z-10 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+                <div class="bg-slate-900/90 backdrop-blur border border-slate-800 rounded-xl px-3 py-1.5 shadow-lg text-xs text-slate-300 flex items-center gap-3 pointer-events-auto">
+                    <span class="flex items-center gap-1.5">
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span id="statusToolText" class="font-medium text-slate-200">Brush Tool</span>
+                    </span>
+                    <span class="text-slate-700">|</span>
+                    <span id="statusActiveUnitText" class="font-medium text-indigo-400">Active: Floor (.)</span>
+                    <span class="text-slate-700">|</span>
+                    <span id="mouseCoords" class="font-mono text-slate-400">R: 0, C: 0</span>
+                </div>
+
+                <div class="bg-slate-900/90 backdrop-blur border border-slate-800 rounded-xl px-2 py-1 shadow-lg flex items-center gap-2 pointer-events-auto">
+                    <select id="selectDisplayLabels" class="bg-slate-950 border border-slate-800 text-slate-300 text-[11px] rounded px-2 py-1 font-mono focus:outline-none">
+                        <option value="symbol">Show Symbols</option>
+                        <option value="numeric">Show Numeric IDs</option>
+                        <option value="none">No Labels</option>
+                    </select>
+
+                    <label class="flex items-center gap-1 text-[11px] text-slate-300 cursor-pointer px-1">
+                        <input type="checkbox" id="chkShowGridLines" checked class="w-3.5 h-3.5 rounded bg-slate-950 border-slate-700 text-indigo-600">
+                        Grid
+                    </label>
+
+                    <label class="flex items-center gap-1 text-[11px] text-emerald-400 cursor-pointer px-1 font-medium">
+                        <input type="checkbox" id="chkShowBboxOutline" checked class="w-3.5 h-3.5 rounded bg-slate-950 border-slate-700 text-emerald-500">
+                        Board Box
+                    </label>
+
+                    <div class="w-px h-4 bg-slate-800"></div>
+
+                    <button id="btnZoomOut" class="w-6 h-6 rounded hover:bg-slate-800 text-slate-300 flex items-center justify-center text-xs" title="Zoom Out (Scroll Down)">
+                        <i class="fa-solid fa-minus"></i>
+                    </button>
+                    <span id="zoomLevel" class="text-xs font-mono px-1 text-slate-400 min-w-[36px] text-center">100%</span>
+                    <button id="btnZoomIn" class="w-6 h-6 rounded hover:bg-slate-800 text-slate-300 flex items-center justify-center text-xs" title="Zoom In (Scroll Up)">
+                        <i class="fa-solid fa-plus"></i>
+                    </button>
+                    <button id="btnFitCanvas" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] rounded flex items-center gap-1" title="Focus Board (F)">
+                        <i class="fa-solid fa-crosshairs"></i> Focus
+                    </button>
+                </div>
+            </div>
+
+            <!-- Virtual 2D Camera Canvas Container (Takes 100% full view) -->
+            <div id="canvasViewport" class="flex-1 relative overflow-hidden bg-slate-950 w-full h-full">
+                <canvas id="gridCanvas" class="w-full h-full block cursor-crosshair"></canvas>
+            </div>
+
+            <!-- Context Footer Navigation Tip -->
+            <div class="absolute bottom-3 left-3 bg-slate-900/85 backdrop-blur border border-slate-800 px-3 py-1.5 rounded-lg text-[11px] text-slate-400 flex flex-wrap items-center gap-3 shadow-lg pointer-events-none z-10">
+                <span><kbd class="px-1 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">LMB</kbd> Paint</span>
+                <span><kbd class="px-1 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">RMB</kbd> Delete/Erase</span>
+                <span><kbd class="px-1 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">Space + Drag</kbd> or <kbd>Middle-Click</kbd> Pan</span>
+                <span><kbd class="px-1 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">Scroll</kbd> Zoom</span>
+                <span><kbd class="px-1 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">F</kbd> Focus</span>
+            </div>
+        </section>
+
+        <!-- Right Panel: Minimum Viable Board Export & Matrix Output -->
+        <aside class="w-full lg:w-96 border-t lg:border-t-0 lg:border-l border-slate-800 bg-slate-900/80 p-3.5 flex flex-col gap-3 flex-shrink-0 z-20">
+            
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                        <i class="fa-solid fa-code text-indigo-400"></i> Board Matrix Export
+                    </h2>
+                    <span class="text-[10px] text-slate-500">Auto-cropped minimum viable board</span>
+                </div>
+                <div class="text-right">
+                    <span id="exportDimInfo" class="text-xs font-mono text-emerald-400 font-bold">8 x 8</span>
+                    <span class="text-[10px] text-slate-500 block">Cropped Matrix</span>
+                </div>
+            </div>
+
+            <!-- Export Format Selector Tabs -->
+            <div class="flex bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1 overflow-x-auto text-xs">
+                <button data-format="symbols" class="fmt-tab active flex-1 py-1 px-2 rounded-md font-medium text-slate-300 hover:text-white transition-all whitespace-nowrap">Text (Sym)</button>
+                <button data-format="numbers" class="fmt-tab flex-1 py-1 px-2 rounded-md font-medium text-slate-400 hover:text-white transition-all whitespace-nowrap">Text (Num)</button>
+                <button data-format="json-array" class="fmt-tab flex-1 py-1 px-2 rounded-md font-medium text-slate-400 hover:text-white transition-all whitespace-nowrap">2D Array</button>
+                <button data-format="json-project" class="fmt-tab flex-1 py-1 px-2 rounded-md font-medium text-slate-400 hover:text-white transition-all whitespace-nowrap">Project JSON</button>
+                <button data-format="sokoban" class="fmt-tab flex-1 py-1 px-2 rounded-md font-medium text-slate-400 hover:text-white transition-all whitespace-nowrap">Sokoban</button>
+                <button data-format="csv" class="fmt-tab flex-1 py-1 px-2 rounded-md font-medium text-slate-400 hover:text-white transition-all whitespace-nowrap">CSV</button>
+            </div>
+
+            <!-- Export Options & Reset Session -->
+            <div class="flex items-center justify-between text-[11px] text-slate-400 px-1">
+                <label for="chkIncludeLegend" class="flex items-center gap-1.5 cursor-pointer">
+                    <input type="checkbox" id="chkIncludeLegend" checked class="w-3.5 h-3.5 rounded bg-slate-950 border-slate-700 text-indigo-600">
+                    Include Legend Header
+                </label>
+                <button id="btnResetSession" class="text-rose-400 hover:text-rose-300 text-[11px] flex items-center gap-1">
+                    <i class="fa-solid fa-trash-can"></i> Reset Session
+                </button>
+            </div>
+
+            <!-- Output Text Area (Auto-Cropped Matrix) -->
+            <div class="relative flex-1 min-h-[220px] flex flex-col">
+                <textarea id="outputArea" readonly class="w-full flex-1 bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono text-xs text-indigo-300 focus:outline-none focus:border-indigo-500 resize-none leading-relaxed"></textarea>
+                
+                <div class="absolute top-3 right-3 flex items-center gap-1.5">
+                    <button id="btnCopyMatrix" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg shadow-md flex items-center gap-1.5 transition-all active:scale-95">
+                        <i class="fa-solid fa-copy"></i>
+                        <span id="btnCopyText">Copy</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Save File, PNG & AI Prompt Triggers -->
+            <div class="grid grid-cols-3 gap-2">
+                <button id="btnDownloadText" class="py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors">
+                    <i class="fa-solid fa-download text-emerald-400"></i> Save File
+                </button>
+                <button id="btnOpenPngModal" class="py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors">
+                    <i class="fa-solid fa-image text-indigo-400"></i> PNG Image
+                </button>
+                <button id="btnOpenPromptGuide" class="py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors">
+                    <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i> AI Prompt
+                </button>
+            </div>
+
+        </aside>
+
+    </main>
+
+    <!-- PNG Export Dialog Modal -->
+    <div id="pngModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-4">
+            <div class="flex items-center justify-between">
+                <h3 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                    <i class="fa-solid fa-image text-emerald-400"></i> Export Board Image
+                </h3>
+                <button id="btnClosePng" class="text-slate-400 hover:text-white w-7 h-7 rounded-lg flex items-center justify-center hover:bg-slate-800">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <p class="text-xs text-slate-400">
+                Exports the auto-cropped minimum viable board as a sharp pixel-perfect PNG image.
+            </p>
+            <div class="space-y-3 bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-xs">
+                <div>
+                    <label class="block text-slate-400 mb-1">Image Resolution Scale:</label>
+                    <select id="selectPngScale" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200">
+                        <option value="1">1x Standard (Original Tile Size)</option>
+                        <option value="2" selected>2x High Resolution (Recommended)</option>
+                        <option value="4">4x Ultra High Resolution (Crisp Zoom)</option>
+                    </select>
+                </div>
+                <div class="flex items-center gap-3">
+                    <label class="flex items-center gap-2 cursor-pointer text-slate-300">
+                        <input type="checkbox" id="chkPngIncludeGrid" checked class="rounded bg-slate-900 border-slate-700 text-indigo-600">
+                        Grid Lines
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer text-slate-300">
+                        <input type="checkbox" id="chkPngIncludeLabels" checked class="rounded bg-slate-900 border-slate-700 text-indigo-600">
+                        Symbols
+                    </label>
+                </div>
+            </div>
+            <div class="flex justify-end gap-2">
+                <button id="btnCancelPng" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-lg">Cancel</button>
+                <button id="btnConfirmDownloadPng" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg shadow flex items-center gap-1.5">
+                    <i class="fa-solid fa-download"></i> Download PNG
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Matrix Modal -->
+    <div id="importModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl flex flex-col gap-4">
+            <div class="flex items-center justify-between">
+                <h3 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                    <i class="fa-solid fa-file-import text-indigo-400"></i> Import Board Matrix
+                </h3>
+                <button id="btnCloseImport" class="text-slate-400 hover:text-white w-7 h-7 rounded-lg flex items-center justify-center hover:bg-slate-800">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <p class="text-xs text-slate-400 leading-relaxed">
+                Paste any 2D JSON array, project JSON, CSV, or ASCII text matrix. The board will be imported directly onto the flexible canvas and auto-centered!
+            </p>
+            <textarea id="importInputArea" placeholder="Paste your matrix here... e.g.&#10;[&#10;  [ 1, 1, 1, 1 ],&#10;  [ 1, 2, 0, 1 ],&#10;  [ 1, 0, 4, 1 ],&#10;  [ 1, 1, 1, 1 ]&#10;]" class="w-full h-44 bg-slate-950 border border-slate-700 rounded-xl p-3 font-mono text-xs text-slate-200 focus:outline-none focus:border-indigo-500 resize-none"></textarea>
+            
+            <div class="flex justify-end gap-2">
+                <button id="btnCancelImport" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-lg">Cancel</button>
+                <button id="btnProcessImport" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg shadow">Import & Center</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Prompt Builder Modal -->
+    <div id="promptModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl flex flex-col gap-4">
+            <div class="flex items-center justify-between">
+                <h3 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                    <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i> AI Game Dev Prompt
+                </h3>
+                <button id="btnClosePrompt" class="text-slate-400 hover:text-white w-7 h-7 rounded-lg flex items-center justify-center hover:bg-slate-800">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <p class="text-xs text-slate-400">
+                Copy this pre-formatted prompt containing your auto-cropped board layout directly into ChatGPT, Claude, or Gemini:
+            </p>
+            <textarea id="promptTemplateArea" readonly class="w-full h-48 bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono text-xs text-amber-200 focus:outline-none resize-none leading-relaxed"></textarea>
+            
+            <div class="flex justify-end gap-2">
+                <button id="btnCopyPrompt" class="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold rounded-lg shadow flex items-center gap-1.5">
+                    <i class="fa-solid fa-copy"></i> Copy Prompt to Clipboard
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Feedback System -->
+    <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        // Storage Key for Local Persistence
+        const STORAGE_KEY = 'boardPainter_session_v4';
+
+        // Unified Units Palette:
+        // Each unit occupies a single cell. Void = -1, Floor = 0, Wall = 1, Player = 2, Block = 3, Goal = 4
+        // Units with isActor=true (Player, Block, Goal) naturally sit on floor when rendered.
+        const DEFAULT_UNITS = [
+            { id: -1, name: "Void / Empty", char: "_", color: "#0c101c", isCore: true, isVoid: true, isWall: false, isActor: false },
+            { id: 0,  name: "Floor",        char: ".", color: "#24334a", isCore: true, isVoid: false, isWall: false, isActor: false },
+            { id: 1,  name: "Wall",         char: "#", color: "#64748b", isCore: false, isVoid: false, isWall: true, isActor: false },
+            { id: 2,  name: "Player",       char: "P", color: "#10b981", isCore: false, isVoid: false, isWall: false, isActor: true },
+            { id: 3,  name: "Block / Box",  char: "B", color: "#f59e0b", isCore: false, isVoid: false, isWall: false, isActor: true },
+            { id: 4,  name: "Goal",         char: "G", color: "#06b6d4", isCore: false, isVoid: false, isWall: false, isActor: true }
+        ];
+
+        // Flexible Workspace Dimensions (Spacious 50x50 board canvas)
+        let cols = 50;
+        let rows = 50;
+        const DEFAULT_CANVAS_SIZE = 50;
+        const BASE_CELL_SIZE = 28;
+        
+        // Single Unified Grid [row][col] -> unit ID
+        let grid = [];
+
+        let palette = JSON.parse(JSON.stringify(DEFAULT_UNITS));
+        let activeTileId = 0; // Default to Floor for easy painting
+
+        let activeTool = 'brush'; // 'brush', 'eraser', 'bucket', 'picker', 'hand'
+        let eraseTargetId = -1; // Default delete/erase sets cell to Void (-1)
+        let labelDisplayMode = 'symbol'; // 'symbol', 'numeric', 'none'
+        let showGridLines = true;
+        let showBboxOutline = true;
+        let cropPadding = 1; // 0 = tightest, 1 = 1-tile void border, 'none' = full canvas
+        let exportFormat = 'symbols';
+        let includeLegend = true;
+
+        // Virtual 2D Camera Navigation State
+        let cameraX = 0; // Screen offset in pixels
+        let cameraY = 0;
+        let zoomScale = 1.0;
+        let isSpacePressed = false;
+        let isPanning = false;
+        let panStartX = 0;
+        let panStartY = 0;
+
+        // Hover Ghost Indicator
+        let hoverCell = null;
+
+        // History Stacks
+        let undoStack = [];
+        let redoStack = [];
+
+        // Pointer Drag State
+        let isMouseDown = false;
+        let currentMouseButton = 0; // 0 = Left, 2 = Right
+        let lastDrawPos = null;
+
+        // Canvas elements
+        const canvas = document.getElementById('gridCanvas');
+        const ctx = canvas.getContext('2d');
+        const viewport = document.getElementById('canvasViewport');
+
+        // Init on load
+        window.addEventListener('load', () => {
+            resizeCanvas();
+            const restored = loadSavedSession();
+            if (!restored) {
+                initFreshFlexibleCanvas(DEFAULT_CANVAS_SIZE, DEFAULT_CANVAS_SIZE, true);
+            }
+            renderPaletteUI();
+            setupEventListeners();
+            setTimeout(() => focusOnBoard(), 50);
+        });
+
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            redrawCanvas();
+        });
+
+        function resizeCanvas() {
+            const dpr = window.devicePixelRatio || 1;
+            const w = viewport.clientWidth || 800;
+            const h = viewport.clientHeight || 600;
+            canvas.width = Math.floor(w * dpr);
+            canvas.height = Math.floor(h * dpr);
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.scale(dpr, dpr);
+        }
+
+        // Initialize Flexible Canvas with Single Grid
+        function initFreshFlexibleCanvas(newC, newR, createStarterRoom = false) {
+            cols = newC;
+            rows = newR;
+            grid = Array.from({ length: rows }, () => Array(cols).fill(-1));
+
+            if (createStarterRoom) {
+                // Centered 8x8 starter room
+                const startR = Math.floor(rows / 2) - 4;
+                const startC = Math.floor(cols / 2) - 4;
+                for (let r = 0; r < 8; r++) {
+                    for (let c = 0; c < 8; c++) {
+                        const gr = startR + r;
+                        const gc = startC + c;
+                        if (r === 0 || r === 7 || c === 0 || c === 7) {
+                            grid[gr][gc] = 1; // Wall
+                        } else {
+                            grid[gr][gc] = 0; // Floor
+                        }
+                    }
+                }
+                grid[startR + 2][startC + 2] = 2; // Player
+                grid[startR + 4][startC + 4] = 3; // Block
+                grid[startR + 5][startC + 5] = 4; // Goal
+            }
+
+            document.getElementById('headerCanvasSize').innerText = `${cols}x${rows}`;
+            updateMetricsAndExports();
+            redrawCanvas();
+            triggerAutoSave();
+        }
+
+        // Calculate Minimum Viable Board Bounding Box (All Non-Void Tiles)
+        function getBoardBoundingBox() {
+            let minR = rows, maxR = -1, minC = cols, maxC = -1;
+            let count = 0;
+
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (grid[r] && grid[r][c] !== -1) {
+                        count++;
+                        if (r < minR) minR = r;
+                        if (r > maxR) maxR = r;
+                        if (c < minC) minC = c;
+                        if (c > maxC) maxC = c;
+                    }
+                }
+            }
+
+            if (count === 0) {
+                const midR = Math.floor(rows / 2);
+                const midC = Math.floor(cols / 2);
+                return { empty: true, minR: midR, maxR: midR, minC: midC, maxC: midC, width: 0, height: 0, count: 0 };
+            }
+
+            return {
+                empty: false,
+                minR,
+                maxR,
+                minC,
+                maxC,
+                width: maxC - minC + 1,
+                height: maxR - minR + 1,
+                count
+            };
+        }
+
+        // Update Board Dimensions & Header Counts
+        function updateMetricsAndExports() {
+            const bbox = getBoardBoundingBox();
+            const w = bbox.empty ? 0 : bbox.width;
+            const h = bbox.empty ? 0 : bbox.height;
+
+            document.getElementById('headerBoardSize').innerText = `${w}x${h}`;
+            document.getElementById('bboxDimLabel').innerText = `${w} x ${h}`;
+            document.getElementById('exportDimInfo').innerText = `${w} x ${h}`;
+            document.getElementById('headerPlayableTiles').innerText = bbox.count;
+
+            updateExportOutput();
+        }
+
+        // AutoSave and LocalStorage Persistence
+        let autoSaveTimer = null;
+        function triggerAutoSave() {
+            const indicator = document.getElementById('savedIndicator');
+            if (indicator) indicator.style.opacity = '0.3';
+
+            clearTimeout(autoSaveTimer);
+            autoSaveTimer = setTimeout(() => {
+                saveCurrentSession();
+                if (indicator) indicator.style.opacity = '1';
+            }, 300);
+        }
+
+        function saveCurrentSession() {
+            try {
+                const sessionData = {
+                    cols,
+                    rows,
+                    grid,
+                    palette,
+                    activeTileId,
+                    labelDisplayMode,
+                    showGridLines,
+                    showBboxOutline,
+                    cropPadding,
+                    eraseTargetId
+                };
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(sessionData));
+            } catch (e) {
+                console.warn('Failed to save session to localStorage', e);
+            }
+        }
+
+        function loadSavedSession() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (!raw) return false;
+                const data = JSON.parse(raw);
+                if (!data || !data.cols || !data.rows || !data.grid) return false;
+
+                cols = data.cols;
+                rows = data.rows;
+                grid = data.grid;
+                if (Array.isArray(data.palette)) palette = data.palette;
+                if (data.activeTileId !== undefined) activeTileId = data.activeTileId;
+                if (data.eraseTargetId !== undefined) {
+                    eraseTargetId = data.eraseTargetId;
+                    const radio = document.querySelector(`input[name="eraseTarget"][value="${eraseTargetId}"]`);
+                    if (radio) radio.checked = true;
+                }
+                if (data.labelDisplayMode) {
+                    labelDisplayMode = data.labelDisplayMode;
+                    document.getElementById('selectDisplayLabels').value = labelDisplayMode;
+                }
+                if (data.showGridLines !== undefined) {
+                    showGridLines = data.showGridLines;
+                    document.getElementById('chkShowGridLines').checked = showGridLines;
+                }
+                if (data.showBboxOutline !== undefined) {
+                    showBboxOutline = data.showBboxOutline;
+                    document.getElementById('chkShowBboxOutline').checked = showBboxOutline;
+                }
+                if (data.cropPadding !== undefined) {
+                    cropPadding = data.cropPadding;
+                    document.getElementById('selectCropPadding').value = String(cropPadding);
+                }
+
+                document.getElementById('headerCanvasSize').innerText = `${cols}x${rows}`;
+                updateMetricsAndExports();
+                redrawCanvas();
+                showToast("Restored board from local storage", "info");
+                return true;
+            } catch (e) {
+                console.warn('Error loading session from localStorage', e);
+                return false;
+            }
+        }
+
+        function resetSession() {
+            if (confirm("Reset current board and start with a fresh canvas?")) {
+                localStorage.removeItem(STORAGE_KEY);
+                palette = JSON.parse(JSON.stringify(DEFAULT_UNITS));
+                activeTileId = 0;
+                initFreshFlexibleCanvas(DEFAULT_CANVAS_SIZE, DEFAULT_CANVAS_SIZE, true);
+                renderPaletteUI();
+                focusOnBoard();
+                showToast("Board session reset to default", "info");
+            }
+        }
+
+        // Focus & Center View on the Minimum Viable Board
+        function focusOnBoard() {
+            const bbox = getBoardBoundingBox();
+            const vW = viewport.clientWidth || 800;
+            const vH = viewport.clientHeight || 600;
+
+            let bW = bbox.empty ? 12 : bbox.width;
+            let bH = bbox.empty ? 12 : bbox.height;
+            let minC = bbox.empty ? Math.floor(cols / 2) - 6 : bbox.minC;
+            let minR = bbox.empty ? Math.floor(rows / 2) - 6 : bbox.minR;
+
+            const targetW = (bW + 4) * BASE_CELL_SIZE;
+            const targetH = (bH + 4) * BASE_CELL_SIZE;
+            const optimalZoom = Math.min(2.0, Math.max(0.4, Math.min(vW / targetW, vH / targetH)));
+            zoomScale = Math.round(optimalZoom * 10) / 10;
+
+            const cellSize = Math.floor(BASE_CELL_SIZE * zoomScale);
+            cameraX = Math.floor((vW - bW * cellSize) / 2 - minC * cellSize);
+            cameraY = Math.floor((vH - bH * cellSize) / 2 - minR * cellSize);
+
+            document.getElementById('zoomLevel').innerText = `${Math.round(zoomScale * 100)}%`;
+            redrawCanvas();
+        }
+
+        // Recenter Active Board within the Flexible Canvas
+        function recenterBoardInCanvas() {
+            const bbox = getBoardBoundingBox();
+            if (bbox.empty) return;
+
+            pushUndoState();
+            const currentCenterR = bbox.minR + Math.floor(bbox.height / 2);
+            const currentCenterC = bbox.minC + Math.floor(bbox.width / 2);
+            const idealCenterR = Math.floor(rows / 2);
+            const idealCenterC = Math.floor(cols / 2);
+
+            const dr = idealCenterR - currentCenterR;
+            const dc = idealCenterC - currentCenterC;
+
+            if (dr === 0 && dc === 0) {
+                showToast("Board is already centered in canvas", "info");
+                return;
+            }
+
+            const nextGrid = Array.from({ length: rows }, () => Array(cols).fill(-1));
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const tr = r + dr;
+                    const tc = c + dc;
+                    if (tr >= 0 && tr < rows && tc >= 0 && tc < cols) {
+                        nextGrid[tr][tc] = grid[r][c];
+                    }
+                }
+            }
+
+            grid = nextGrid;
+            updateMetricsAndExports();
+            focusOnBoard();
+            triggerAutoSave();
+            showToast("Recentered board in canvas", "success");
+        }
+
+        // Surround Board with Outer Walls
+        function surroundBoardWithWall() {
+            const bbox = getBoardBoundingBox();
+            if (bbox.empty) return;
+
+            pushUndoState();
+            const wallId = palette.find(u => u.isWall || u.name.toLowerCase().includes('wall'))?.id || 1;
+
+            const r0 = Math.max(0, bbox.minR - 1);
+            const r1 = Math.min(rows - 1, bbox.maxR + 1);
+            const c0 = Math.max(0, bbox.minC - 1);
+            const c1 = Math.min(cols - 1, bbox.maxC + 1);
+
+            for (let r = r0; r <= r1; r++) {
+                for (let c = c0; c <= c1; c++) {
+                    if (r === r0 || r === r1 || c === c0 || c === c1) {
+                        grid[r][c] = wallId;
+                    }
+                }
+            }
+
+            updateMetricsAndExports();
+            redrawCanvas();
+            triggerAutoSave();
+            showToast("Surrounded board with border wall", "success");
+        }
+
+        // Undo & Redo History System
+        function pushUndoState() {
+            if (undoStack.length > 50) undoStack.shift();
+            undoStack.push(JSON.stringify({ grid, cols, rows }));
+            redoStack = [];
+        }
+
+        function undo() {
+            if (undoStack.length === 0) return;
+            redoStack.push(JSON.stringify({ grid, cols, rows }));
+            const state = JSON.parse(undoStack.pop());
+            grid = state.grid;
+            cols = state.cols;
+            rows = state.rows;
+            updateMetricsAndExports();
+            redrawCanvas();
+            triggerAutoSave();
+            showToast("Undo", "info");
+        }
+
+        function redo() {
+            if (redoStack.length === 0) return;
+            undoStack.push(JSON.stringify({ grid, cols, rows }));
+            const state = JSON.parse(redoStack.pop());
+            grid = state.grid;
+            cols = state.cols;
+            rows = state.rows;
+            updateMetricsAndExports();
+            redrawCanvas();
+            triggerAutoSave();
+            showToast("Redo", "info");
+        }
+
+        // Render Palette UI
+        function renderPaletteUI() {
+            const container = document.getElementById('paletteContainer');
+            container.innerHTML = '';
+
+            palette.forEach((unit, index) => {
+                const isActive = unit.id === activeTileId;
+                const shortcutKey = index < 9 ? (index + 1) : '';
+
+                const item = document.createElement('div');
+                item.className = `palette-item flex items-center justify-between p-1.5 rounded-lg border transition-all cursor-pointer ${
+                    isActive ? 'bg-indigo-950/80 border-indigo-500 shadow-md ring-1 ring-indigo-500' : 'bg-slate-950 border-slate-800 hover:border-slate-700'
+                }`;
+
+                item.innerHTML = `
+                    <div class="flex items-center gap-2 flex-1 min-w-0" onclick="selectTile(${unit.id})">
+                        <div class="w-6 h-6 rounded flex items-center justify-center font-mono font-bold text-xs shadow-inner flex-shrink-0 ${unit.isVoid ? 'border border-dashed border-slate-600' : ''}" 
+                             style="background-color: ${unit.color}; color: ${getContrastColor(unit.color)}">
+                            ${unit.isVoid ? '_' : unit.char}
+                        </div>
+                        <div class="flex-1 min-w-0 flex items-center gap-1.5">
+                            <span class="text-xs font-medium text-slate-200 truncate">${unit.name}</span>
+                            <span class="text-[9px] font-mono text-slate-500 bg-slate-900 px-1 rounded">${unit.id}</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <input type="text" value="${unit.char}" maxlength="2" 
+                               onchange="updateUnitProperty(${unit.id}, 'char', this.value)"
+                               onclick="event.stopPropagation()"
+                               title="Tile Character Symbol"
+                               class="w-6 text-center bg-slate-900 border border-slate-700 rounded text-xs font-mono text-indigo-300 py-0.5 focus:outline-none">
+                        <input type="color" value="${unit.color}" 
+                               onchange="updateUnitProperty(${unit.id}, 'color', this.value)"
+                               onclick="event.stopPropagation()"
+                               title="Tile Color"
+                               class="w-5 h-5 rounded cursor-pointer bg-transparent border-0 p-0">
+                        ${shortcutKey ? `<span class="text-[9px] font-mono text-slate-500 px-1 bg-slate-900 rounded border border-slate-800">${shortcutKey}</span>` : ''}
+                        ${!unit.isCore ? `
+                            <button onclick="event.stopPropagation(); deleteUnit(${unit.id})" class="text-slate-600 hover:text-rose-400 p-1" title="Delete Unit">
+                                <i class="fa-solid fa-trash-can text-xs"></i>
+                            </button>
+                        ` : ''}
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+
+            const currentUnit = palette.find(u => u.id === activeTileId) || palette[1];
+            document.getElementById('statusActiveUnitText').innerText = `Active: ${currentUnit.name} (${currentUnit.char})`;
+        }
+
+        function selectTile(id) {
+            activeTileId = id;
+            if (activeTool === 'eraser' || activeTool === 'hand') setActiveTool('brush');
+            renderPaletteUI();
+        }
+
+        function updateUnitProperty(id, prop, val) {
+            const unit = palette.find(u => u.id === id);
+            if (!unit) return;
+            if (prop === 'char') unit.char = val || '_';
+            if (prop === 'color') unit.color = val;
+            renderPaletteUI();
+            redrawCanvas();
+            updateExportOutput();
+            triggerAutoSave();
+        }
+
+        function deleteUnit(id) {
+            const unitToDelete = palette.find(u => u.id === id);
+            if (!unitToDelete || unitToDelete.isCore) return;
+
+            pushUndoState();
+            palette = palette.filter(u => u.id !== id);
+
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (grid[r] && grid[r][c] === id) grid[r][c] = 0; // revert to floor
+                }
+            }
+
+            if (activeTileId === id) activeTileId = 0;
+            renderPaletteUI();
+            updateMetricsAndExports();
+            redrawCanvas();
+            triggerAutoSave();
+            showToast(`Deleted unit '${unitToDelete.name}'`, "info");
+        }
+
+        function saveCustomUnit() {
+            const nameInput = document.getElementById('newUnitName');
+            const idInput = document.getElementById('newUnitId');
+            const charInput = document.getElementById('newUnitChar');
+            const colorInput = document.getElementById('newUnitColor');
+
+            const name = nameInput.value.trim() || 'New Unit';
+            let id = parseInt(idInput.value);
+            if (isNaN(id)) {
+                const existingIds = palette.map(u => u.id);
+                id = 1;
+                while (existingIds.includes(id)) id++;
+            }
+
+            if (palette.some(u => u.id === id)) {
+                showToast(`Unit with ID ${id} already exists`, "warning");
+                return;
+            }
+
+            const char = charInput.value.trim() || String.fromCharCode(65 + (palette.length % 26));
+            const color = colorInput.value || '#ec4899';
+
+            palette.push({
+                id: id,
+                name: name,
+                char: char,
+                color: color,
+                isCore: false,
+                isVoid: false,
+                isWall: false,
+                isActor: true
+            });
+
+            activeTileId = id;
+            document.getElementById('newUnitForm').classList.add('hidden');
+            nameInput.value = '';
+            idInput.value = '';
+            charInput.value = '';
+
+            renderPaletteUI();
+            updateMetricsAndExports();
+            triggerAutoSave();
+            showToast(`Created Unit '${name}' (ID: ${id})`, "success");
+        }
+
+        function setActiveTool(tool) {
+            activeTool = tool;
+            document.querySelectorAll('.tool-btn').forEach(btn => {
+                if (btn.dataset.tool === tool) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
+            const labels = {
+                brush: "Brush Tool",
+                eraser: "Eraser Tool",
+                bucket: "Flood Fill",
+                picker: "Eyedropper",
+                hand: "Hand / Pan Tool"
+            };
+            document.getElementById('statusToolText').innerText = labels[tool] || "Tool";
+            updateCursor();
+        }
+
+        function updateCursor() {
+            if (isPanning) {
+                canvas.style.cursor = 'grabbing';
+            } else if (activeTool === 'hand' || isSpacePressed) {
+                canvas.style.cursor = 'grab';
+            } else if (activeTool === 'picker') {
+                canvas.style.cursor = 'crosshair';
+            } else {
+                canvas.style.cursor = 'crosshair';
+            }
+        }
+
+        // Screen Coordinates to Grid Coordinates (Virtual Camera Transformation)
+        function screenToGrid(clientX, clientY) {
+            const rect = canvas.getBoundingClientRect();
+            const screenX = clientX - rect.left;
+            const screenY = clientY - rect.top;
+            const cellSize = Math.floor(BASE_CELL_SIZE * zoomScale);
+
+            const c = Math.floor((screenX - cameraX) / cellSize);
+            const r = Math.floor((screenY - cameraY) / cellSize);
+
+            return {
+                c,
+                r,
+                screenX,
+                screenY,
+                valid: (c >= 0 && c < cols && r >= 0 && r < rows)
+            };
+        }
+
+        // Canvas Rendering System (Unified Cells with Implicit Floor for Actors)
+        function redrawCanvas() {
+            const vW = viewport.clientWidth || 800;
+            const vH = viewport.clientHeight || 600;
+
+            // Clear screen
+            ctx.fillStyle = '#070a13';
+            ctx.fillRect(0, 0, vW, vH);
+
+            const cellSize = Math.floor(BASE_CELL_SIZE * zoomScale);
+
+            // Compute visible grid ranges (Frustum Culling)
+            const minVisibleC = Math.max(0, Math.floor(-cameraX / cellSize));
+            const maxVisibleC = Math.min(cols - 1, Math.ceil((vW - cameraX) / cellSize));
+            const minVisibleR = Math.max(0, Math.floor(-cameraY / cellSize));
+            const maxVisibleR = Math.min(rows - 1, Math.ceil((vH - cameraY) / cellSize));
+
+            // Grid Backdrop
+            const gridPixelX = cameraX;
+            const gridPixelY = cameraY;
+            const gridPixelW = cols * cellSize;
+            const gridPixelH = rows * cellSize;
+
+            ctx.fillStyle = '#080c18';
+            ctx.fillRect(gridPixelX, gridPixelY, gridPixelW, gridPixelH);
+
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(gridPixelX, gridPixelY, gridPixelW, gridPixelH);
+
+            // Floor Unit definition for background under actors
+            const floorUnit = palette.find(u => u.id === 0) || palette[1];
+
+            // 1. Draw Visible Cells
+            for (let r = minVisibleR; r <= maxVisibleR; r++) {
+                for (let c = minVisibleC; c <= maxVisibleC; c++) {
+                    const x = gridPixelX + c * cellSize;
+                    const y = gridPixelY + r * cellSize;
+                    const cellId = grid[r][c];
+
+                    if (cellId === -1) {
+                        // Void: subtle cross dot
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+                        ctx.fillRect(x + Math.floor(cellSize / 2), y + Math.floor(cellSize / 2), 1, 1);
+                    } else {
+                        const unit = palette.find(u => u.id === cellId) || { id: cellId, name: 'Unit', char: '?', color: '#8b5cf6', isWall: false, isActor: true };
+
+                        if (unit.id === 0) {
+                            // Floor
+                            ctx.fillStyle = unit.color;
+                            ctx.fillRect(x, y, cellSize, cellSize);
+
+                            if (labelDisplayMode !== 'none') {
+                                ctx.fillStyle = getContrastColor(unit.color);
+                                ctx.font = `bold ${Math.max(9, Math.floor(cellSize * 0.42))}px "JetBrains Mono", monospace`;
+                                ctx.textAlign = 'center';
+                                ctx.textBaseline = 'middle';
+                                const text = labelDisplayMode === 'numeric' ? String(unit.id) : unit.char;
+                                ctx.fillText(text, x + cellSize / 2, y + cellSize / 2 + 1);
+                            }
+                        } else if (unit.isWall || unit.id === 1 || unit.char === '#') {
+                            // Wall: solid stone/brick with subtle border
+                            ctx.fillStyle = unit.color;
+                            ctx.fillRect(x, y, cellSize, cellSize);
+                            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+                            ctx.lineWidth = 1;
+                            ctx.strokeRect(x + 1, y + 1, cellSize - 2, cellSize - 2);
+
+                            if (labelDisplayMode !== 'none') {
+                                ctx.fillStyle = getContrastColor(unit.color);
+                                ctx.font = `bold ${Math.max(9, Math.floor(cellSize * 0.42))}px "JetBrains Mono", monospace`;
+                                ctx.textAlign = 'center';
+                                ctx.textBaseline = 'middle';
+                                const text = labelDisplayMode === 'numeric' ? String(unit.id) : unit.char;
+                                ctx.fillText(text, x + cellSize / 2, y + cellSize / 2 + 1);
+                            }
+                        } else {
+                            // Player, Block, Goal, or custom actor:
+                            // ALWAYS draw floor below it by default!
+                            ctx.fillStyle = floorUnit.color;
+                            ctx.fillRect(x, y, cellSize, cellSize);
+
+                            // Draw actor token on top
+                            const inset = Math.max(2, Math.floor(cellSize * 0.1));
+                            const tokenSize = cellSize - (inset * 2);
+                            const radius = Math.floor(tokenSize * 0.25);
+
+                            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+                            ctx.shadowBlur = 5;
+                            ctx.shadowOffsetY = 2;
+
+                            ctx.fillStyle = unit.color;
+                            fillRoundRect(ctx, x + inset, y + inset, tokenSize, tokenSize, radius);
+
+                            ctx.shadowColor = 'transparent';
+                            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                            ctx.lineWidth = 1;
+                            strokeRoundRect(ctx, x + inset, y + inset, tokenSize, tokenSize, radius);
+
+                            // Actor label
+                            if (labelDisplayMode !== 'none') {
+                                ctx.fillStyle = getContrastColor(unit.color);
+                                ctx.font = `bold ${Math.max(9, Math.floor(cellSize * 0.44))}px "JetBrains Mono", monospace`;
+                                ctx.textAlign = 'center';
+                                ctx.textBaseline = 'middle';
+                                const text = labelDisplayMode === 'numeric' ? String(unit.id) : unit.char;
+                                ctx.fillText(text, x + cellSize / 2, y + cellSize / 2 + 1);
+                            }
+                        }
+                    }
+
+                    // Grid Lines
+                    if (showGridLines) {
+                        ctx.strokeStyle = (cellId === -1) ? 'rgba(30, 41, 59, 0.35)' : 'rgba(15, 23, 42, 0.6)';
+                        ctx.lineWidth = 1;
+                        ctx.strokeRect(x, y, cellSize, cellSize);
+                    }
+                }
+            }
+
+            // 2. Minimum Viable Board Outline & Dimension Badge
+            if (showBboxOutline) {
+                const bbox = getBoardBoundingBox();
+                if (!bbox.empty) {
+                    const bx = gridPixelX + bbox.minC * cellSize;
+                    const by = gridPixelY + bbox.minR * cellSize;
+                    const bw = bbox.width * cellSize;
+                    const bh = bbox.height * cellSize;
+
+                    ctx.save();
+                    ctx.strokeStyle = '#10b981';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([6, 4]);
+                    ctx.shadowColor = 'rgba(16, 185, 129, 0.4)';
+                    ctx.shadowBlur = 8;
+                    ctx.strokeRect(bx, by, bw, bh);
+                    ctx.setLineDash([]);
+
+                    // Pill Badge at top-left
+                    const badgeText = `Board: ${bbox.width}x${bbox.height}`;
+                    ctx.font = `bold 10px "JetBrains Mono", monospace`;
+                    const textWidth = ctx.measureText(badgeText).width;
+                    const padX = 6;
+                    const badgeH = 18;
+
+                    ctx.fillStyle = '#064e3b';
+                    ctx.shadowColor = 'transparent';
+                    fillRoundRect(ctx, bx + 4, by - badgeH - 4, textWidth + padX * 2, badgeH, 4);
+
+                    ctx.strokeStyle = '#10b981';
+                    ctx.lineWidth = 1;
+                    strokeRoundRect(ctx, bx + 4, by - badgeH - 4, textWidth + padX * 2, badgeH, 4);
+
+                    ctx.fillStyle = '#6ee7b7';
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(badgeText, bx + 4 + padX, by - 4 - (badgeH / 2));
+                    ctx.restore();
+                }
+            }
+
+            // 3. Hover Ghost Indicator
+            if (hoverCell && hoverCell.r >= 0 && hoverCell.r < rows && hoverCell.c >= 0 && hoverCell.c < cols && activeTool !== 'hand' && !isSpacePressed) {
+                const hx = gridPixelX + hoverCell.c * cellSize;
+                const hy = gridPixelY + hoverCell.r * cellSize;
+                ctx.save();
+                ctx.strokeStyle = '#818cf8';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(hx + 1, hy + 1, cellSize - 2, cellSize - 2);
+                ctx.restore();
+            }
+        }
+
+        function fillRoundRect(c, x, y, w, h, r) {
+            c.beginPath();
+            c.moveTo(x + r, y);
+            c.lineTo(x + w - r, y);
+            c.quadraticCurveTo(x + w, y, x + w, y + r);
+            c.lineTo(x + w, y + h - r);
+            c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+            c.lineTo(x + r, y + h);
+            c.quadraticCurveTo(x, y + h, x, y + h - r);
+            c.lineTo(x, y + r);
+            c.quadraticCurveTo(x, y, x + r, y);
+            c.closePath();
+            c.fill();
+        }
+
+        function strokeRoundRect(c, x, y, w, h, r) {
+            c.beginPath();
+            c.moveTo(x + r, y);
+            c.lineTo(x + w - r, y);
+            c.quadraticCurveTo(x + w, y, x + w, y + r);
+            c.lineTo(x + w, y + h - r);
+            c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+            c.lineTo(x + r, y + h);
+            c.quadraticCurveTo(x, y + h, x, y + h - r);
+            c.lineTo(x, y + r);
+            c.quadraticCurveTo(x, y, x + r, y);
+            c.closePath();
+            c.stroke();
+        }
+
+        function getContrastColor(hexColor) {
+            if (!hexColor || hexColor.charAt(0) !== '#') return '#ffffff';
+            const r = parseInt(hexColor.substr(1, 2), 16);
+            const g = parseInt(hexColor.substr(3, 2), 16);
+            const b = parseInt(hexColor.substr(5, 2), 16);
+            const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+            return (yiq >= 128) ? '#090d16' : '#ffffff';
+        }
+
+        // Direct Unified Paint / Delete Logic (No segmentation)
+        function handlePaint(r, c, isRightClick = false) {
+            if (activeTool === 'picker') {
+                const picked = grid[r][c];
+                selectTile(picked);
+                setActiveTool('brush');
+                return;
+            }
+
+            // Delete / Erase directly replaces cell with eraseTargetId
+            const targetVal = (activeTool === 'eraser' || isRightClick) ? eraseTargetId : activeTileId;
+
+            if (activeTool === 'bucket') {
+                pushUndoState();
+                floodFill(r, c, grid[r][c], targetVal);
+                updateMetricsAndExports();
+                redrawCanvas();
+                triggerAutoSave();
+                return;
+            }
+
+            // Brush or Eraser stroke
+            if (grid[r][c] !== targetVal) {
+                grid[r][c] = targetVal;
+                updateMetricsAndExports();
+                redrawCanvas();
+                triggerAutoSave();
+            }
+        }
+
+        function drawLine(r0, c0, r1, c1, isRightClick) {
+            let dx = Math.abs(c1 - c0);
+            let dy = Math.abs(r1 - r0);
+            let sx = (c0 < c1) ? 1 : -1;
+            let sy = (r0 < r1) ? 1 : -1;
+            let err = dx - dy;
+
+            let currR = r0;
+            let currC = c0;
+
+            while (true) {
+                handlePaint(currR, currC, isRightClick);
+                if (currR === r1 && currC === c1) break;
+                let e2 = 2 * err;
+                if (e2 > -dy) { err -= dy; currC += sx; }
+                if (e2 < dx) { err += dx; currR += sy; }
+            }
+        }
+
+        function floodFill(startR, startC, targetId, replacementId) {
+            if (targetId === replacementId) return;
+            if (grid[startR][startC] !== targetId) return;
+
+            const queue = [{ r: startR, c: startC }];
+            grid[startR][startC] = replacementId;
+
+            while (queue.length > 0) {
+                const { r, c } = queue.shift();
+                const neighbors = [
+                    { r: r - 1, c: c },
+                    { r: r + 1, c: c },
+                    { r: r, c: c - 1 },
+                    { r: r, c: c + 1 }
+                ];
+                for (let n of neighbors) {
+                    if (n.r >= 0 && n.r < rows && n.c >= 0 && n.c < cols) {
+                        if (grid[n.r][n.c] === targetId) {
+                            grid[n.r][n.c] = replacementId;
+                            queue.push(n);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Transforms
+        function rotateGrid(cw = true) {
+            const bbox = getBoardBoundingBox();
+            if (bbox.empty) return;
+
+            pushUndoState();
+            const minR = bbox.minR;
+            const maxR = bbox.maxR;
+            const minC = bbox.minC;
+            const maxC = bbox.maxC;
+
+            const subH = bbox.height;
+            const subW = bbox.width;
+
+            const sub = [];
+            for (let r = minR; r <= maxR; r++) {
+                const row = [];
+                for (let c = minC; c <= maxC; c++) {
+                    row.push(grid[r][c]);
+                    grid[r][c] = -1;
+                }
+                sub.push(row);
+            }
+
+            const rotatedH = subW;
+            const rotatedW = subH;
+            const rot = Array.from({ length: rotatedH }, () => Array(rotatedW).fill(-1));
+
+            for (let r = 0; r < subH; r++) {
+                for (let c = 0; c < subW; c++) {
+                    const tr = cw ? c : (subW - 1 - c);
+                    const tc = cw ? (subH - 1 - r) : r;
+                    rot[tr][tc] = sub[r][c];
+                }
+            }
+
+            const midR = minR + Math.floor(subH / 2);
+            const midC = minC + Math.floor(subW / 2);
+            const startR = Math.max(0, Math.min(rows - rotatedH, midR - Math.floor(rotatedH / 2)));
+            const startC = Math.max(0, Math.min(cols - rotatedW, midC - Math.floor(rotatedW / 2)));
+
+            for (let r = 0; r < rotatedH; r++) {
+                for (let c = 0; c < rotatedW; c++) {
+                    grid[startR + r][startC + c] = rot[r][c];
+                }
+            }
+
+            updateMetricsAndExports();
+            redrawCanvas();
+            triggerAutoSave();
+            showToast(`Rotated board 90° ${cw ? 'CW' : 'CCW'}`, "info");
+        }
+
+        function flipGrid(horizontal = true) {
+            const bbox = getBoardBoundingBox();
+            if (bbox.empty) return;
+
+            pushUndoState();
+            const minR = bbox.minR;
+            const maxR = bbox.maxR;
+            const minC = bbox.minC;
+            const maxC = bbox.maxC;
+
+            const sub = [];
+            for (let r = minR; r <= maxR; r++) {
+                const row = [];
+                for (let c = minC; c <= maxC; c++) {
+                    row.push(grid[r][c]);
+                }
+                if (horizontal) row.reverse();
+                sub.push(row);
+            }
+
+            if (!horizontal) sub.reverse();
+
+            for (let r = 0; r < bbox.height; r++) {
+                for (let c = 0; c < bbox.width; c++) {
+                    grid[minR + r][minC + c] = sub[r][c];
+                }
+            }
+
+            updateMetricsAndExports();
+            redrawCanvas();
+            triggerAutoSave();
+            showToast(`Flipped board ${horizontal ? 'Horizontally' : 'Vertically'}`, "info");
+        }
+
+        // Export Calculation Logic (Auto-Cropped to Minimum Viable Board)
+        function generateExportMatrix() {
+            const bbox = getBoardBoundingBox();
+            const lines = [];
+
+            let r0 = 0, r1 = rows - 1, c0 = 0, c1 = cols - 1;
+
+            if (cropPadding !== 'none' && !bbox.empty) {
+                const pad = parseInt(cropPadding) || 0;
+                r0 = Math.max(0, bbox.minR - pad);
+                r1 = Math.min(rows - 1, bbox.maxR + pad);
+                c0 = Math.max(0, bbox.minC - pad);
+                c1 = Math.min(cols - 1, bbox.maxC + pad);
+            }
+
+            const expW = c1 - c0 + 1;
+            const expH = r1 - r0 + 1;
+            document.getElementById('exportDimInfo').innerText = `${expW} x ${expH}`;
+
+            if (includeLegend) {
+                const legendUnits = palette.map(u => `${u.id}=${u.name} ('${u.char}')`).join(', ');
+                lines.push(`// Legend: ${legendUnits}`);
+                lines.push(`// Minimum Viable Board: ${expW}x${expH} (Auto-Cropped)`);
+                lines.push('');
+            }
+
+            const cropped = [];
+            for (let r = r0; r <= r1; r++) {
+                const row = [];
+                for (let c = c0; c <= c1; c++) {
+                    const cellId = grid[r][c];
+                    const unit = palette.find(u => u.id === cellId) || palette[0];
+                    row.push({ id: cellId, char: unit.char });
+                }
+                cropped.push(row);
+            }
+
+            if (exportFormat === 'symbols') {
+                cropped.forEach(row => {
+                    lines.push(row.map(cell => cell.char.padEnd(2, ' ')).join(''));
+                });
+            } else if (exportFormat === 'numbers') {
+                cropped.forEach(row => {
+                    lines.push(row.map(cell => String(cell.id).padStart(3, ' ')).join(' '));
+                });
+            } else if (exportFormat === 'json-array') {
+                lines.push('[');
+                cropped.forEach((row, idx) => {
+                    const rowStr = '  [ ' + row.map(cell => String(cell.id).padStart(2, ' ')).join(', ') + ' ]';
+                    lines.push(rowStr + (idx < cropped.length - 1 ? ',' : ''));
+                });
+                lines.push(']');
+            } else if (exportFormat === 'json-project') {
+                const project = {
+                    version: "3.0",
+                    dimensions: { width: expW, height: expH },
+                    palette: palette.map(u => ({ id: u.id, name: u.name, char: u.char, color: u.color })),
+                    board: cropped.map(r => r.map(c => c.id))
+                };
+                return JSON.stringify(project, null, 2);
+            } else if (exportFormat === 'sokoban') {
+                cropped.forEach(row => {
+                    const rowChars = row.map(cell => {
+                        if (cell.id === 1) return '#'; // Wall
+                        if (cell.id === 2) return '@'; // Player
+                        if (cell.id === 3) return '$'; // Box
+                        if (cell.id === 4) return '.'; // Goal
+                        if (cell.id === 0) return ' '; // Floor
+                        if (cell.id === -1) return '_'; // Void
+                        return cell.char;
+                    });
+                    lines.push(rowChars.join(''));
+                });
+            } else if (exportFormat === 'csv') {
+                cropped.forEach(row => {
+                    lines.push(row.map(cell => cell.id).join(','));
+                });
+            }
+
+            return lines.join('\n');
+        }
+
+        function updateExportOutput() {
+            document.getElementById('outputArea').value = generateExportMatrix();
+        }
+
+        function copyExportToClipboard() {
+            const text = generateExportMatrix();
+            copyToClipboardFallback(text);
+            const copyBtnText = document.getElementById('btnCopyText');
+            copyBtnText.innerText = "Copied!";
+            showToast("Board matrix copied to clipboard!", "success");
+            setTimeout(() => { copyBtnText.innerText = "Copy"; }, 2000);
+        }
+
+        function copyToClipboardFallback(text) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).catch(() => legacyCopy(text));
+            } else {
+                legacyCopy(text);
+            }
+        }
+
+        function legacyCopy(text) {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.position = "fixed";
+            textArea.style.left = "-9999px";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                document.execCommand('copy');
+            } catch (err) {
+                console.error('Copy fallback failed', err);
+            }
+            document.body.removeChild(textArea);
+        }
+
+        function downloadMatrixFile() {
+            const text = generateExportMatrix();
+            const extMap = { 'csv': 'csv', 'json-array': 'json', 'json-project': 'json' };
+            const ext = extMap[exportFormat] || 'txt';
+            const bbox = getBoardBoundingBox();
+            const w = bbox.empty ? cols : bbox.width;
+            const h = bbox.empty ? rows : bbox.height;
+            const filename = `board_stage_${w}x${h}.${ext}`;
+
+            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            link.click();
+            URL.revokeObjectURL(link.href);
+            showToast(`Downloaded ${filename}`, "success");
+        }
+
+        // Crisp High-Resolution PNG Export (Auto-Cropped)
+        function exportHighResPng() {
+            const scale = parseInt(document.getElementById('selectPngScale').value) || 2;
+            const incGrid = document.getElementById('chkPngIncludeGrid').checked;
+            const incLabels = document.getElementById('chkPngIncludeLabels').checked;
+
+            const bbox = getBoardBoundingBox();
+            let r0 = 0, r1 = rows - 1, c0 = 0, c1 = cols - 1;
+
+            if (cropPadding !== 'none' && !bbox.empty) {
+                const pad = parseInt(cropPadding) || 0;
+                r0 = Math.max(0, bbox.minR - pad);
+                r1 = Math.min(rows - 1, bbox.maxR + pad);
+                c0 = Math.max(0, bbox.minC - pad);
+                c1 = Math.min(cols - 1, bbox.maxC + pad);
+            }
+
+            const expW = c1 - c0 + 1;
+            const expH = r1 - r0 + 1;
+            const cellSize = 32 * scale;
+
+            const offCanvas = document.createElement('canvas');
+            offCanvas.width = expW * cellSize;
+            offCanvas.height = expH * cellSize;
+            const offCtx = offCanvas.getContext('2d');
+            offCtx.imageSmoothingEnabled = false;
+
+            const floorUnit = palette.find(u => u.id === 0) || palette[1];
+
+            for (let r = r0; r <= r1; r++) {
+                for (let c = c0; c <= c1; c++) {
+                    const x = (c - c0) * cellSize;
+                    const y = (r - r0) * cellSize;
+                    const cellId = grid[r][c];
+
+                    if (cellId === -1) {
+                        offCtx.fillStyle = '#080c18';
+                        offCtx.fillRect(x, y, cellSize, cellSize);
+                    } else {
+                        const unit = palette.find(u => u.id === cellId) || { id: cellId, char: '?', color: '#8b5cf6', isWall: false, isActor: true };
+
+                        if (unit.id === 0) {
+                            offCtx.fillStyle = unit.color;
+                            offCtx.fillRect(x, y, cellSize, cellSize);
+                        } else if (unit.isWall || unit.id === 1 || unit.char === '#') {
+                            offCtx.fillStyle = unit.color;
+                            offCtx.fillRect(x, y, cellSize, cellSize);
+                        } else {
+                            // Actor sits on floor
+                            offCtx.fillStyle = floorUnit.color;
+                            offCtx.fillRect(x, y, cellSize, cellSize);
+
+                            const inset = Math.max(2 * scale, Math.floor(cellSize * 0.1));
+                            const tokenSize = cellSize - (inset * 2);
+                            const radius = Math.floor(tokenSize * 0.25);
+                            offCtx.fillStyle = unit.color;
+                            fillRoundRect(offCtx, x + inset, y + inset, tokenSize, tokenSize, radius);
+                        }
+
+                        if (incLabels && labelDisplayMode !== 'none') {
+                            offCtx.fillStyle = getContrastColor(unit.color);
+                            offCtx.font = `bold ${Math.max(10, Math.floor(cellSize * 0.44))}px "JetBrains Mono", monospace`;
+                            offCtx.textAlign = 'center';
+                            offCtx.textBaseline = 'middle';
+                            const text = labelDisplayMode === 'numeric' ? String(unit.id) : unit.char;
+                            offCtx.fillText(text, x + cellSize / 2, y + cellSize / 2 + 1);
+                        }
+                    }
+
+                    if (incGrid) {
+                        offCtx.strokeStyle = 'rgba(15, 23, 42, 0.45)';
+                        offCtx.lineWidth = Math.max(1, scale);
+                        offCtx.strokeRect(x, y, cellSize, cellSize);
+                    }
+                }
+            }
+
+            offCanvas.toBlob(blob => {
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `board_stage_${expW}x${expH}_${scale}x.png`;
+                link.click();
+                URL.revokeObjectURL(link.href);
+                document.getElementById('pngModal').classList.add('hidden');
+                showToast(`Downloaded PNG (${offCanvas.width}x${offCanvas.height})`, "success");
+            }, 'image/png');
+        }
+
+        // Import Parser
+        function processImportText() {
+            const raw = document.getElementById('importInputArea').value.trim();
+            if (!raw) return;
+
+            let matrix = [];
+
+            try {
+                const json = JSON.parse(raw);
+                if (json && Array.isArray(json.board)) {
+                    matrix = json.board;
+                } else if (Array.isArray(json) && Array.isArray(json[0])) {
+                    matrix = json;
+                }
+            } catch (e) {}
+
+            if (matrix.length === 0) {
+                const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith('//'));
+                lines.forEach(line => {
+                    if (line.includes(',')) {
+                        matrix.push(line.split(',').map(s => s.trim().replace(/^["']|["']$/g, '')));
+                    } else if (line.includes('\t')) {
+                        matrix.push(line.split('\t'));
+                    } else if (line.includes(' ')) {
+                        matrix.push(line.split(/\s+/));
+                    } else {
+                        matrix.push(line.split(''));
+                    }
+                });
+            }
+
+            if (matrix.length === 0) {
+                showToast("Could not parse matrix format", "error");
+                return;
+            }
+
+            pushUndoState();
+            const srcH = matrix.length;
+            const srcW = Math.max(...matrix.map(r => r.length));
+
+            const needSize = Math.max(DEFAULT_CANVAS_SIZE, Math.max(srcW, srcH) + 10);
+            initFreshFlexibleCanvas(needSize, needSize, false);
+
+            const startR = Math.floor((rows - srcH) / 2);
+            const startC = Math.floor((cols - srcW) / 2);
+
+            for (let r = 0; r < srcH; r++) {
+                for (let c = 0; c < srcW; c++) {
+                    const val = matrix[r][c] !== undefined ? String(matrix[r][c]) : '_';
+                    let matchedUnit = palette.find(u => String(u.id) === val || u.char === val);
+
+                    if (!matchedUnit) {
+                        const parsedNum = parseInt(val);
+                        const unitId = !isNaN(parsedNum) ? parsedNum : (palette.length ? Math.max(...palette.map(u => u.id)) + 1 : 1);
+                        matchedUnit = {
+                            id: unitId,
+                            name: `Unit ${val}`,
+                            char: val.substring(0, 2),
+                            color: '#8b5cf6',
+                            isCore: false,
+                            isVoid: false,
+                            isWall: false,
+                            isActor: true
+                        };
+                        palette.push(matchedUnit);
+                    }
+
+                    grid[startR + r][startC + c] = matchedUnit.id;
+                }
+            }
+
+            renderPaletteUI();
+            updateMetricsAndExports();
+            redrawCanvas();
+            focusOnBoard();
+            triggerAutoSave();
+            document.getElementById('importModal').classList.add('hidden');
+            showToast(`Imported ${srcW}x${srcH} board successfully!`, "success");
+        }
+
+        function openPromptModal() {
+            const matrixText = generateExportMatrix();
+            const bbox = getBoardBoundingBox();
+            const w = bbox.empty ? cols : bbox.width;
+            const h = bbox.empty ? rows : bbox.height;
+
+            const prompt = `I am designing a 2D game level stage. Here is my minimum viable board matrix (${w}x${h}) with auto-cropped boundaries:
+
+${matrixText}
+
+Please write the game board loading and rendering logic. Each cell is either Void (-1), Floor (0), Wall (1), or actor entity (Player=2, Block=3, Goal=4) which naturally sits on top of floor.`;
+
+            document.getElementById('promptTemplateArea').value = prompt;
+            document.getElementById('promptModal').classList.remove('hidden');
+        }
+
+        // Toast Feedback System
+        function showToast(msg, type = "info") {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+
+            const bgMap = {
+                success: 'bg-emerald-900/90 border-emerald-500 text-emerald-100',
+                error: 'bg-rose-900/90 border-rose-500 text-rose-100',
+                warning: 'bg-amber-900/90 border-amber-500 text-amber-100',
+                info: 'bg-indigo-900/90 border-indigo-500 text-indigo-100'
+            };
+
+            const iconMap = {
+                success: 'fa-circle-check text-emerald-400',
+                error: 'fa-triangle-exclamation text-rose-400',
+                warning: 'fa-circle-exclamation text-amber-400',
+                info: 'fa-circle-info text-indigo-400'
+            };
+
+            toast.className = `flex items-center gap-2.5 px-4 py-2 rounded-xl border backdrop-blur shadow-xl text-xs font-medium transition-all transform translate-y-2 opacity-0 ${bgMap[type] || bgMap.info}`;
+            toast.innerHTML = `<i class="fa-solid ${iconMap[type] || iconMap.info}"></i> <span>${msg}</span>`;
+
+            container.appendChild(toast);
+            requestAnimationFrame(() => toast.classList.remove('translate-y-2', 'opacity-0'));
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Setup All Event Listeners
+        function setupEventListeners() {
+            // Pointer Down on Canvas
+            canvas.addEventListener('pointerdown', (e) => {
+                const isPanButton = (e.button === 1) || (activeTool === 'hand') || isSpacePressed;
+                
+                if (isPanButton) {
+                    isPanning = true;
+                    panStartX = e.clientX;
+                    panStartY = e.clientY;
+                    canvas.setPointerCapture(e.pointerId);
+                    updateCursor();
+                    return;
+                }
+
+                if (e.button === 0 || e.button === 2) {
+                    pushUndoState();
+                    isMouseDown = true;
+                    currentMouseButton = e.button;
+                    canvas.setPointerCapture(e.pointerId);
+
+                    const pos = screenToGrid(e.clientX, e.clientY);
+                    lastDrawPos = pos;
+                    if (pos.valid) {
+                        handlePaint(pos.r, pos.c, currentMouseButton === 2);
+                    }
+                }
+            });
+
+            // Pointer Move on Canvas
+            canvas.addEventListener('pointermove', (e) => {
+                if (isPanning) {
+                    const dx = e.clientX - panStartX;
+                    const dy = e.clientY - panStartY;
+                    cameraX += dx;
+                    cameraY += dy;
+                    panStartX = e.clientX;
+                    panStartY = e.clientY;
+                    redrawCanvas();
+                    return;
+                }
+
+                const pos = screenToGrid(e.clientX, e.clientY);
+                if (pos.valid) {
+                    hoverCell = { r: pos.r, c: pos.c };
+                    document.getElementById('mouseCoords').innerText = `R: ${pos.r}, C: ${pos.c}`;
+                } else {
+                    hoverCell = null;
+                }
+
+                if (isMouseDown && (activeTool === 'brush' || activeTool === 'eraser')) {
+                    if (pos.valid) {
+                        if (lastDrawPos && lastDrawPos.valid) {
+                            drawLine(lastDrawPos.r, lastDrawPos.c, pos.r, pos.c, currentMouseButton === 2);
+                        } else {
+                            handlePaint(pos.r, pos.c, currentMouseButton === 2);
+                        }
+                        lastDrawPos = pos;
+                    }
+                }
+
+                redrawCanvas();
+            });
+
+            // Pointer Up on Canvas
+            canvas.addEventListener('pointerup', (e) => {
+                isMouseDown = false;
+                isPanning = false;
+                lastDrawPos = null;
+                try { canvas.releasePointerCapture(e.pointerId); } catch(err) {}
+                updateCursor();
+            });
+
+            canvas.addEventListener('pointercancel', (e) => {
+                isMouseDown = false;
+                isPanning = false;
+                lastDrawPos = null;
+                try { canvas.releasePointerCapture(e.pointerId); } catch(err) {}
+                updateCursor();
+            });
+
+            canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+            // Smooth Wheel Zoom (Anchored to Mouse Cursor Position)
+            canvas.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+
+                const oldZoom = zoomScale;
+                const zoomDelta = e.deltaY < 0 ? 1.15 : 0.87;
+                const newZoom = Math.min(3.0, Math.max(0.3, Math.round(oldZoom * zoomDelta * 100) / 100));
+
+                if (newZoom !== oldZoom) {
+                    const oldCell = Math.floor(BASE_CELL_SIZE * oldZoom);
+                    const newCell = Math.floor(BASE_CELL_SIZE * newZoom);
+
+                    const gridX = (mouseX - cameraX) / oldCell;
+                    const gridY = (mouseY - cameraY) / oldCell;
+
+                    cameraX = Math.round(mouseX - gridX * newCell);
+                    cameraY = Math.round(mouseY - gridY * newCell);
+                    zoomScale = newZoom;
+
+                    document.getElementById('zoomLevel').innerText = `${Math.round(zoomScale * 100)}%`;
+                    redrawCanvas();
+                }
+            }, { passive: false });
+
+            // Focus & Board Actions
+            document.getElementById('btnFocusBoard').addEventListener('click', focusOnBoard);
+            document.getElementById('btnFocusBoardTop').addEventListener('click', focusOnBoard);
+            document.getElementById('btnFitCanvas').addEventListener('click', focusOnBoard);
+            document.getElementById('btnRecenterBoard').addEventListener('click', recenterBoardInCanvas);
+            document.getElementById('btnWrapWall').addEventListener('click', surroundBoardWithWall);
+            document.getElementById('btnClearBoard').addEventListener('click', () => {
+                if (confirm("Clear all painted tiles on the board?")) {
+                    pushUndoState();
+                    for (let r = 0; r < rows; r++) {
+                        for (let c = 0; c < cols; c++) grid[r][c] = -1;
+                    }
+                    updateMetricsAndExports();
+                    redrawCanvas();
+                    triggerAutoSave();
+                    showToast("Board cleared", "info");
+                }
+            });
+
+            // Crop Padding Selector
+            document.getElementById('selectCropPadding').addEventListener('change', (e) => {
+                cropPadding = e.target.value === 'none' ? 'none' : parseInt(e.target.value);
+                updateMetricsAndExports();
+                triggerAutoSave();
+            });
+
+            // Transforms
+            document.getElementById('btnRotateCW').addEventListener('click', () => rotateGrid(true));
+            document.getElementById('btnRotateCCW').addEventListener('click', () => rotateGrid(false));
+            document.getElementById('btnFlipH').addEventListener('click', () => flipGrid(true));
+            document.getElementById('btnFlipV').addEventListener('click', () => flipGrid(false));
+
+            // Tools
+            document.querySelectorAll('.tool-btn').forEach(btn => {
+                btn.addEventListener('click', () => setActiveTool(btn.dataset.tool));
+            });
+
+            document.querySelectorAll('input[name="eraseTarget"]').forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    eraseTargetId = parseInt(e.target.value);
+                });
+            });
+
+            document.getElementById('btnUndo').addEventListener('click', undo);
+            document.getElementById('btnRedo').addEventListener('click', redo);
+
+            document.getElementById('btnResetSession').addEventListener('click', resetSession);
+
+            // Custom Units
+            document.getElementById('btnToggleAddUnit').addEventListener('click', () => {
+                document.getElementById('newUnitForm').classList.toggle('hidden');
+            });
+            document.getElementById('btnSaveNewUnit').addEventListener('click', saveCustomUnit);
+            document.getElementById('btnCancelNewUnit').addEventListener('click', () => {
+                document.getElementById('newUnitForm').classList.add('hidden');
+            });
+
+            // Display Controls
+            document.getElementById('selectDisplayLabels').addEventListener('change', (e) => {
+                labelDisplayMode = e.target.value;
+                redrawCanvas();
+                triggerAutoSave();
+            });
+
+            document.getElementById('chkShowGridLines').addEventListener('change', (e) => {
+                showGridLines = e.target.checked;
+                redrawCanvas();
+                triggerAutoSave();
+            });
+
+            document.getElementById('chkShowBboxOutline').addEventListener('change', (e) => {
+                showBboxOutline = e.target.checked;
+                redrawCanvas();
+                triggerAutoSave();
+            });
+
+            document.getElementById('btnZoomIn').addEventListener('click', () => {
+                zoomScale = Math.min(3.0, Math.round((zoomScale + 0.15) * 100) / 100);
+                document.getElementById('zoomLevel').innerText = `${Math.round(zoomScale * 100)}%`;
+                redrawCanvas();
+            });
+
+            document.getElementById('btnZoomOut').addEventListener('click', () => {
+                zoomScale = Math.max(0.3, Math.round((zoomScale - 0.15) * 100) / 100);
+                document.getElementById('zoomLevel').innerText = `${Math.round(zoomScale * 100)}%`;
+                redrawCanvas();
+            });
+
+            // Export Tabs
+            document.querySelectorAll('.fmt-tab').forEach(tab => {
+                tab.addEventListener('click', (e) => {
+                    document.querySelectorAll('.fmt-tab').forEach(t => t.classList.remove('active', 'text-slate-300'));
+                    e.target.classList.add('active', 'text-slate-300');
+                    exportFormat = e.target.dataset.format;
+                    updateExportOutput();
+                });
+            });
+
+            document.getElementById('chkIncludeLegend').addEventListener('change', (e) => {
+                includeLegend = e.target.checked;
+                updateExportOutput();
+            });
+
+            document.getElementById('btnCopyMatrix').addEventListener('click', copyExportToClipboard);
+            document.getElementById('btnQuickCopyTop').addEventListener('click', copyExportToClipboard);
+            document.getElementById('btnDownloadText').addEventListener('click', downloadMatrixFile);
+
+            // PNG Export Modal
+            document.getElementById('btnQuickExportPng').addEventListener('click', () => {
+                document.getElementById('pngModal').classList.remove('hidden');
+            });
+            document.getElementById('btnOpenPngModal').addEventListener('click', () => {
+                document.getElementById('pngModal').classList.remove('hidden');
+            });
+            document.getElementById('btnClosePng').addEventListener('click', () => {
+                document.getElementById('pngModal').classList.add('hidden');
+            });
+            document.getElementById('btnCancelPng').addEventListener('click', () => {
+                document.getElementById('pngModal').classList.add('hidden');
+            });
+            document.getElementById('btnConfirmDownloadPng').addEventListener('click', exportHighResPng);
+
+            // Import Modal
+            document.getElementById('btnOpenImport').addEventListener('click', () => {
+                document.getElementById('importModal').classList.remove('hidden');
+            });
+            document.getElementById('btnCloseImport').addEventListener('click', () => {
+                document.getElementById('importModal').classList.add('hidden');
+            });
+            document.getElementById('btnCancelImport').addEventListener('click', () => {
+                document.getElementById('importModal').classList.add('hidden');
+            });
+            document.getElementById('btnProcessImport').addEventListener('click', processImportText);
+
+            // Prompt Modal
+            document.getElementById('btnOpenPromptGuide').addEventListener('click', openPromptModal);
+            document.getElementById('btnClosePrompt').addEventListener('click', () => {
+                document.getElementById('promptModal').classList.add('hidden');
+            });
+            document.getElementById('btnCopyPrompt').addEventListener('click', () => {
+                const promptText = document.getElementById('promptTemplateArea').value;
+                copyToClipboardFallback(promptText);
+                showToast("Copied AI prompt to clipboard!", "success");
+            });
+
+            // Keyboard Shortcuts
+            window.addEventListener('keydown', (e) => {
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+
+                if (e.code === 'Space' && !isSpacePressed) {
+                    e.preventDefault();
+                    isSpacePressed = true;
+                    updateCursor();
+                    return;
+                }
+
+                if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+                    if (e.shiftKey) redo(); else undo();
+                    return;
+                }
+                if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+                    redo();
+                    return;
+                }
+
+                if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey && activeTool !== 'bucket') {
+                    focusOnBoard();
+                    return;
+                }
+
+                const keyNum = parseInt(e.key);
+                if (!isNaN(keyNum) && keyNum >= 1 && keyNum <= 9) {
+                    const idx = keyNum - 1;
+                    if (palette[idx]) {
+                        selectTile(palette[idx].id);
+                        showToast(`Selected: ${palette[idx].name}`, "info");
+                    }
+                } else if (e.key.toLowerCase() === 'b') {
+                    setActiveTool('brush');
+                } else if (e.key.toLowerCase() === 'e') {
+                    setActiveTool('eraser');
+                } else if (e.key.toLowerCase() === 'i') {
+                    setActiveTool('picker');
+                } else if (e.key.toLowerCase() === 'h') {
+                    setActiveTool('hand');
+                }
+            });
+
+            window.addEventListener('keyup', (e) => {
+                if (e.code === 'Space') {
+                    isSpacePressed = false;
+                    updateCursor();
+                }
+            });
+        }
+    </script>
+</body>
+</html>
